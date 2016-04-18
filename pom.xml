@@ -7,9 +7,21 @@
     <groupId>tjusig</groupId>
     <artifactId>bigbig</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 
-        <dependencies>
+    <dependencies>
             <dependency> <!-- Spark dependency -->
                 <groupId>org.apache.spark</groupId>
                 <artifactId>spark-core_2.10</artifactId>
