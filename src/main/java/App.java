@@ -5,8 +5,10 @@ import org.apache.spark.api.java.function.Function;
 
 public class App {
     public static void main(String[] args) {
-        String logFile = "YOUR_SPARK_HOME/README.md"; // Should be some file on your system
-        SparkConf conf = new SparkConf().setAppName("Simple Application");
+
+
+        String logFile = "./src/main/resources/dataset_TIST2015.tsv"; // Should be some file on your system
+        SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local");;
         JavaSparkContext sc = new JavaSparkContext(conf);
         JavaRDD<String> logData = sc.textFile(logFile).cache();
 
