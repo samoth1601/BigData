@@ -3,87 +3,122 @@ import org.apache.spark.api.java.*;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.function.Function;
 
+import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
+
+
 public class App {
+    /** 1. Load the Foursquare dataset.*/
+    final static String datasetRaw = "./src/main/resources/dataset_TIST2015.tsv";
+    final static String datasetCitiesRaw = "./src/main/resources/dataset_TIST2015_cities.txt";
+    final static SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local");
+    final static JavaSparkContext sc = new JavaSparkContext(conf);
+    final static JavaRDD<String> dataset = sc.textFile(datasetRaw);
+    final static JavaRDD<String> datasetCities = sc.textFile(datasetCitiesRaw);
+
+
     public static void main(String[] args) {
 
-        /**
-         * 4. utc_time - check-in time on the server represented by a UNIX timestamp.
-         5. timezone_offset - timezone offset of the check-in in minutes with respect
-         to UTC time.
-         */
-
-        /**1. Load the Foursquare dataset.*/
-        String logFile = "./src/main/resources/dataset_TIST2015.tsv"; // Should be some file on your system
-        SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local");;
-        JavaSparkContext sc = new JavaSparkContext(conf);
-        //JavaRDD<String> logData = sc.textFile(logFile).cache();
-        JavaRDD<String> textFile = sc.textFile(logFile);
-
-
-        List<String> sortedLines = textFile.takeOrdered(5);
-        for (String line : sortedLines) {
-            String[] splittedLine = line.split("\t");
-            String dateTime = splittedLine[3];
-            String timeOffset = splittedLine[4];
-            //System.out.println(time + " " + timeOffset);
-            calculateLocalTime(dateTime, timeOffset);
-            //System.out.println(dateTime + " " + timeOffset);
+        /** 2. Calculate local time for each check-in (UTC time + timezone offset). */
+        JavaRDD<String> localTimeRDD = convertToLocalTime(dataset);
+        List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
+        for (String line : localTimeStringList) {
+            System.out.println(line);
         }
 
-        /*
-        JavaRDD<String> test = textFile.map(new Function<String, String>() {
-            public String call(String line) throws Exception{
-
-                String[] splittedLine = line.split("\t");
-                String dateTime = splittedLine[3];
-                String timeOffset = splittedLine[4];
+        /** 3.Assign a city and country to each check-in*/
 
 
-                return calculateLocalTime(dateTime, timeOffset).toString();
+        /** 4. Answer the following questions:*/
+        //todo (a) How many unique users are represented in the dataset?
+        float uniqueUsers = countUniqueUsers(dataset);
+        System.out.println("Unique users: " + uniqueUsers);
+
+        //todo (b) How many times did they check-in in total?
+        float totalSessions = countTotalSessions(dataset);
+        System.out.println("Total number of sessions : " + totalSessions);
+
+        //todo (c) How many check-in sessions are there in the dataset?
+        float uniqueCheckInSessions = countUniqueSessions(dataset);
+        System.out.println("Unique users: " + uniqueUsers);
+
+        //todo (d) How many countries are represented in the dataset?
+
+        //todo (e) How many cities are represented in the dataset?
+
+
+    }
+
+    private static JavaRDD<String> assignCityAndCountyToEachCheckIn(JavaRDD<String> dataset){
+        return dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                String[] splittedLine = s.split("\t");
+                //henter latLon
+                String lat = splittedLine[5];
+                String lon = splittedLine[6];
+
+                //for alle byer, sjekk hvilken som er nærmest.
+                //Kanskje kjøre map inni denne igjen?...
+
+                return String.join("\t", splittedLine);
             }
         });
 
-        for (String yolo : test.takeOrdered(10)){
-            System.out.println(yolo);
-        }
-        */
-
-
-        //List<String> sortedLines = lines.takeOrdered(lines.count());
-
-
-        //System.out.println(sortedLines);
-        System.out.println("heeeeeeeeeeeey");
-        /** 2. Calculate local time for each check-in (UTC time + timezone offset).
-         long numAs = lines.filter(new Function<String, Boolean>() {
-         public Boolean call(String s) { return s.contains("a"); }
-         }).count();
-         System.out.println("Lines with a: " + numAs);*/
     }
 
-    private static Date calculateLocalTime(String dateTime, String stringOffset) {
-            int offset = Integer.parseInt(stringOffset);
+    private static long countTotalSessions(JavaRDD<String> dataset){
+        return dataset.count();
+    }
+
+    private static long countUniqueSessions(JavaRDD<String> dataset){
+        return dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                String[] splittedLine = s.split("\t");
+                String sessionId = splittedLine[2];
+                return sessionId;
+            }
+        }).distinct().count();
+    }
+
+    private static long countUniqueUsers(JavaRDD<String> dataset){
+        return dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                String[] splittedLine = s.split("\t");
+                String userId = splittedLine[1];
+                return userId;
+            }
+        }).distinct().count();
+    }
+
+    private static JavaRDD<String> convertToLocalTime(JavaRDD<String> dataset){
+        return dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                String[] splittedLine = s.split("\t");
+                String currentDate = splittedLine[3];
+                String timeOffset = splittedLine[4];
+                String updatedDate = calculateLocalTime(currentDate,timeOffset);
+                splittedLine[4] = updatedDate;
+                return String.join("\t", splittedLine);
+            }
+        });
+
+    }
+
+    private static String calculateLocalTime(String dateTime, String stringOffset) {
+        DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         Date temp = new Date();
         try {
-            temp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateTime);
-            System.out.print("TIME IS: ");
-            System.out.print(temp);
+            temp = df.parse(dateTime);
             Calendar cal = Calendar.getInstance();
             cal.setTime(temp);
-            cal.add(Calendar.MINUTE, offset);
-            System.out.print("LOCAL TIME IS: ");
-            System.out.print(cal.getTime());
-            return cal.getTime();
-
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-        return temp;
+            cal.add(Calendar.MINUTE, Integer.parseInt(stringOffset));
+            return df.format(cal.getTime());
+        } catch (ParseException e) {}
+        return temp.toString();
     }
 }
