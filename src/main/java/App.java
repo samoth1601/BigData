@@ -1,7 +1,11 @@
 /* SimpleApp.java */
+import org.apache.commons.beanutils.converters.IntegerArrayConverter;
 import org.apache.spark.api.java.*;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.function.Function;
+import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFunction;
+import scala.Tuple2;
 
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -22,19 +26,35 @@ public class App {
     final static JavaRDD<String> datasetCities = sc.textFile(datasetCitiesRaw);
 
 
+
     public static void main(String[] args) {
 
+        /**PRØVE FJERNE NOE HEADERGREIER?
+        String header = dataset.first();
+
+        JavaRDD<String> datasetNew = dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception {
+                String[] splittedLine = s.split("\t");
+
+                return String.join("\t", splittedLine);
+            }
+        });
+         */
+
         /** 2. Calculate local time for each check-in (UTC time + timezone offset). */
-        JavaRDD<String> localTimeRDD = convertToLocalTime(dataset);
-        List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
-        for (String line : localTimeStringList) {
-            System.out.println(line);
-        }
+
+//        JavaRDD<String> localTimeRDD = (convertToLocalTime(dataset));
+//        List<String> localTimeStringList = localTimeRDD.take(10);
+//        //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
+//        for (String line : localTimeStringList) {
+//            System.out.println(line);
+//        }
 
         /** 3.Assign a city and country to each check-in*/
 
 
         /** 4. Answer the following questions:*/
+        /*
         //todo (a) How many unique users are represented in the dataset?
         float uniqueUsers = countUniqueUsers(dataset);
         System.out.println("Unique users: " + uniqueUsers);
@@ -50,8 +70,16 @@ public class App {
         //todo (d) How many countries are represented in the dataset?
 
         //todo (e) How many cities are represented in the dataset?
+*/
 
-
+        /**Calculate lengths of sessions as number of check-ins and provide a histogram
+        of these lengths*/
+        JavaPairRDD<String,Integer> sessionPairRDD = (countSessionsLength(dataset));
+        List<Tuple2<String,Integer>> localTimeStringList = sessionPairRDD.collect();
+        //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
+        for (Tuple2<String, Integer> line : localTimeStringList) {
+            System.out.println(line);
+        }
     }
 
     private static JavaRDD<String> assignCityAndCountyToEachCheckIn(JavaRDD<String> dataset){
@@ -68,7 +96,31 @@ public class App {
                 return String.join("\t", splittedLine);
             }
         });
+    }
 
+
+    private static JavaPairRDD<String,Integer> countSessionsLength(JavaRDD<String> dataset){
+        return  dataset.mapToPair(
+                new PairFunction<String, String, Integer>() {
+                    public Tuple2<String, Integer> call(String x) {
+                        String[] splittedLine = x.split("\t");
+                        String sessionId = splittedLine[2];
+                        return new Tuple2(sessionId, 1); }
+                }).reduceByKey(
+                new Function2<Integer, Integer, Integer>() {
+                    public Integer call(Integer a, Integer b) { return a + b; }
+                }).mapToPair(
+                new PairFunction<Tuple2<String, Integer>, String, Integer>() {
+                    @Override
+                    public Tuple2<String, Integer> call(Tuple2<String, Integer> stringIntegerTuple2) throws Exception {
+                        Integer tempKey = stringIntegerTuple2._2();
+                        return new Tuple2(tempKey, 1);}
+                }).reduceByKey(new Function2<Integer, Integer, Integer>() {
+            @Override
+            public Integer call(Integer integer, Integer integer2) throws Exception {
+                return integer + integer2;
+            }
+        }).sortByKey();
     }
 
     private static long countTotalSessions(JavaRDD<String> dataset){
@@ -106,7 +158,6 @@ public class App {
                 return String.join("\t", splittedLine);
             }
         });
-
     }
 
     private static String calculateLocalTime(String dateTime, String stringOffset) {
