@@ -60,7 +60,7 @@ public class App {
         System.out.println("Unique users: " + uniqueUsers);
 
         //todo (b) How many times did they check-in in total?
-        float totalSessions = countTotalSessions(dataset);
+        float totalSessions = countTotalCheckins(dataset);
         System.out.println("Total number of sessions : " + totalSessions);
 
         //todo (c) How many check-in sessions are there in the dataset?
@@ -72,14 +72,16 @@ public class App {
         //todo (e) How many cities are represented in the dataset?
 */
 
-        /**Calculate lengths of sessions as number of check-ins and provide a histogram
+        /** oppg. 5 Calculate lengths of sessions as number of check-ins and provide a histogram
         of these lengths*/
+
+        /*
         JavaPairRDD<String,Integer> sessionPairRDD = (countSessionsLength(dataset));
         List<Tuple2<String,Integer>> localTimeStringList = sessionPairRDD.collect();
         //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
         for (Tuple2<String, Integer> line : localTimeStringList) {
             System.out.println(line);
-        }
+        }*/
     }
 
     private static JavaRDD<String> assignCityAndCountyToEachCheckIn(JavaRDD<String> dataset){
@@ -112,8 +114,8 @@ public class App {
                 }).mapToPair(
                 new PairFunction<Tuple2<String, Integer>, String, Integer>() {
                     @Override
-                    public Tuple2<String, Integer> call(Tuple2<String, Integer> stringIntegerTuple2) throws Exception {
-                        Integer tempKey = stringIntegerTuple2._2();
+                    public Tuple2<String, Integer> call(Tuple2<String, Integer> keyValPairFromLast) throws Exception {
+                        Integer tempKey = keyValPairFromLast._2();
                         return new Tuple2(tempKey, 1);}
                 }).reduceByKey(new Function2<Integer, Integer, Integer>() {
             @Override
@@ -123,7 +125,7 @@ public class App {
         }).sortByKey();
     }
 
-    private static long countTotalSessions(JavaRDD<String> dataset){
+    private static long countTotalCheckins(JavaRDD<String> dataset){
         return dataset.count();
     }
 
