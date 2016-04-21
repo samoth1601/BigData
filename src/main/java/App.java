@@ -1,5 +1,4 @@
 /* SimpleApp.java */
-import org.apache.commons.beanutils.converters.IntegerArrayConverter;
 import org.apache.spark.api.java.*;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.function.Function;
@@ -7,13 +6,11 @@ import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
 import scala.Tuple2;
 
+
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
-
+import java.util.*;
 
 
 public class App {
@@ -30,15 +27,15 @@ public class App {
     public static void main(String[] args) {
 
         /**PRØVE FJERNE NOE HEADERGREIER?
-        String header = dataset.first();
+         String header = dataset.first();
 
-        JavaRDD<String> datasetNew = dataset.map(new Function<String, String>() {
-            public String call(String s) throws Exception {
-                String[] splittedLine = s.split("\t");
+         JavaRDD<String> datasetNew = dataset.map(new Function<String, String>() {
+         public String call(String s) throws Exception {
+         String[] splittedLine = s.split("\t");
 
-                return String.join("\t", splittedLine);
-            }
-        });
+         return String.join("\t", splittedLine);
+         }
+         });
          */
 
         /** 2. Calculate local time for each check-in (UTC time + timezone offset). */
@@ -73,14 +70,51 @@ public class App {
 */
 
         /**Calculate lengths of sessions as number of check-ins and provide a histogram
-        of these lengths*/
+         of these lengths*/
+        /*
         JavaPairRDD<String,Integer> sessionPairRDD = (countSessionsLength(dataset));
         List<Tuple2<String,Integer>> localTimeStringList = sessionPairRDD.collect();
         //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
         for (Tuple2<String, Integer> line : localTimeStringList) {
             System.out.println(line);
+        }*/
+
+        /**For sessions with 4 and more check-ins, calculate their distance in kilometers
+         (use Haversine formula to compute distance between two pairs of geo.
+         coordinates).*/
+        JavaPairRDD<String, Set<String>> distancePairRDD = (computeSessionDistance(dataset));
+        List<Tuple2<String, Set<String>>> distancePairRDDLIst = distancePairRDD.take(25);
+        //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
+        for (Tuple2<String, Set<String>> line : distancePairRDDLIst) {
+            System.out.println(line);
         }
     }
+
+
+
+    private static JavaPairRDD<String, Set<String>> computeSessionDistance(JavaRDD<String> dataset){
+        return  dataset.mapToPair(
+                new PairFunction<String, String, String>() {
+                    public Tuple2<String, String> call(String x) {
+                        String[] splittedLine = x.split("\t");
+                        String sessionId = splittedLine[2];
+                        return new Tuple2(sessionId, x); }
+                }).aggregateByKey(new HashSet<String>(),
+                new Function2<Set<String>, String, Set<String>>() {
+                    @Override
+                    public Set<String> call(Set<String> a, String b) {
+                        a.add(b);
+                        return a;
+                    }
+                },
+                new Function2<Set<String>, Set<String>, Set<String>>() {
+                    @Override
+                    public Set<String> call(Set<String> a, Set<String> b) {
+                        a.addAll(b);
+                        return a;
+                    }
+                })
+}
 
     private static JavaRDD<String> assignCityAndCountyToEachCheckIn(JavaRDD<String> dataset){
         return dataset.map(new Function<String, String>() {
