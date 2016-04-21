@@ -93,13 +93,16 @@ public class App {
 
 
     private static JavaPairRDD<String, Set<String>> computeSessionDistance(JavaRDD<String> dataset){
+        /**lager KeyValueRDD (Pair RDD med sessionId som key og hele checkinstringen som value)*/
         return  dataset.mapToPair(
                 new PairFunction<String, String, String>() {
                     public Tuple2<String, String> call(String x) {
                         String[] splittedLine = x.split("\t");
                         String sessionId = splittedLine[2];
                         return new Tuple2(sessionId, x); }
-                }).aggregateByKey(new HashSet<String>(),
+                })
+                /**Slår sammen alle linjene med samme key og legger values etter hverandre i samme StringSet.*/
+                .aggregateByKey(new HashSet<String>(),
                 new Function2<Set<String>, String, Set<String>>() {
                     @Override
                     public Set<String> call(Set<String> a, String b) {
@@ -113,7 +116,29 @@ public class App {
                         a.addAll(b);
                         return a;
                     }
-                });
+                })
+                /**For hver sessionId, split stringSettet til checkins, og kalkuler avstanden mellom dem.*/
+                .mapValues(new Function<Set<String>, Set<String>>() {
+            @Override
+            public Set<String> call(Set<String> strings) throws Exception {
+
+
+                //må sortere etter yolo.
+                for (String checkIn : strings){
+
+                    String[] splittedLine = checkIn.split("\t");
+
+
+                    //henter latLon
+                    double lat = Double.parseDouble(splittedLine[5]);
+                    double lon = Double.parseDouble(splittedLine[6]);
+
+                   // Haversine.distance(lat,lon,)
+
+                }
+return strings;
+            }
+        });
 }
 
     private static JavaRDD<String> assignCityAndCountyToEachCheckIn(JavaRDD<String> dataset){
