@@ -113,7 +113,7 @@ public class App {
                         a.addAll(b);
                         return a;
                     }
-                })
+                });
 }
 
     private static JavaRDD<String> assignCityAndCountyToEachCheckIn(JavaRDD<String> dataset){
