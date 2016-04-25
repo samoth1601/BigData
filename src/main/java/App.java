@@ -48,6 +48,13 @@ public class App {
 //        }
 
         /** 3.Assign a city and country to each check-in*/
+        /*JavaRDD<String> cityCountryRDD = (assignCityCountry(dataset));
+        List<String> cityCountryList = cityCountryRDD.take(10);
+        //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
+        for (String line : cityCountryList) {
+            System.out.println(line);
+        }*/
+        //brute force is fine
 
 
         /** 4. Answer the following questions:*/
@@ -71,28 +78,39 @@ public class App {
 
         /**Calculate lengths of sessions as number of check-ins and provide a histogram
          of these lengths*/
-        /*
+
         JavaPairRDD<String,Integer> sessionPairRDD = (countSessionsLength(dataset));
         List<Tuple2<String,Integer>> localTimeStringList = sessionPairRDD.collect();
         //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
         for (Tuple2<String, Integer> line : localTimeStringList) {
             System.out.println(line);
-        }*/
+        }
 
         /**For sessions with 4 and more check-ins, calculate their distance in kilometers
          (use Haversine formula to compute distance between two pairs of geo.
          coordinates).*/
-        JavaPairRDD<String, Set<String>> distancePairRDD = (computeSessionDistance(dataset));
-        List<Tuple2<String, Set<String>>> distancePairRDDLIst = distancePairRDD.take(25);
+        JavaPairRDD<String, Double> distancePairRDD = (computeSessionDistance(dataset));
+        List<Tuple2<String, Double>> distancePairRDDLIst = distancePairRDD.take(150);
         //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
-        for (Tuple2<String, Set<String>> line : distancePairRDDLIst) {
+        for (Tuple2<String, Double> line : distancePairRDDLIst) {
             System.out.println(line);
         }
     }
 
 
+    //private static JavaPairRDD<String, Double> assignCityCountry(JavaRDD<String> dataset) {
+        /**lager KeyValueRDD (Pair RDD med sessionId som key og hele checkinstringen som value)*/
+        /*return dataset.mapToPair(
+                new PairFunction<String, String, String>() {
+                    public Tuple2<String, String> call(String x) {
+                        String[] splittedLine = x.split("\t");
+                        String sessionId = splittedLine[2];
+                        return new Tuple2(sessionId, x);
+                    }
+                })
+    }*/
 
-    private static JavaPairRDD<String, Set<String>> computeSessionDistance(JavaRDD<String> dataset){
+    private static JavaPairRDD<String, Double> computeSessionDistance(JavaRDD<String> dataset){
         /**lager KeyValueRDD (Pair RDD med sessionId som key og hele checkinstringen som value)*/
         return  dataset.mapToPair(
                 new PairFunction<String, String, String>() {
@@ -103,43 +121,60 @@ public class App {
                 })
                 /**Slår sammen alle linjene med samme key og legger values etter hverandre i samme StringSet.*/
                 .aggregateByKey(new HashSet<String>(),
-                new Function2<Set<String>, String, Set<String>>() {
+                        new Function2<Set<String>, String, Set<String>>() {
+                            @Override
+                            public Set<String> call(Set<String> a, String b) {
+                                a.add(b);
+                                return a;
+                            }
+                        },
+                        new Function2<Set<String>, Set<String>, Set<String>>() {
+                            @Override
+                            public Set<String> call(Set<String> a, Set<String> b) {
+                                a.addAll(b);
+                                return a;
+                            }
+                        })
+                /**Filter, hvis færre enn 4 checkins, remove*/
+                .filter(new Function<Tuple2<String, Set<String>>, Boolean>() {
                     @Override
-                    public Set<String> call(Set<String> a, String b) {
-                        a.add(b);
-                        return a;
-                    }
-                },
-                new Function2<Set<String>, Set<String>, Set<String>>() {
-                    @Override
-                    public Set<String> call(Set<String> a, Set<String> b) {
-                        a.addAll(b);
-                        return a;
+                    public Boolean call(Tuple2<String, Set<String>> stringSetTuple2) throws Exception {
+                        return (stringSetTuple2._2().size() >= 4);
                     }
                 })
-                /**For hver sessionId, split stringSettet til checkins, og kalkuler avstanden mellom dem.*/
-                .mapValues(new Function<Set<String>, Set<String>>() {
-            @Override
-            public Set<String> call(Set<String> strings) throws Exception {
+                /**For hver sessionId, split stringSettet til checkins, og kalkuler avstanden mellom dem.
+                 * if sort. have stringset as rdd and sort by time
+                 * if not, mention assumption of already sorted.*/
 
-
-                //må sortere etter yolo.
-                for (String checkIn : strings){
-
-                    String[] splittedLine = checkIn.split("\t");
-
-
-                    //henter latLon
-                    double lat = Double.parseDouble(splittedLine[5]);
-                    double lon = Double.parseDouble(splittedLine[6]);
-
-                   // Haversine.distance(lat,lon,)
-
-                }
-return strings;
-            }
-        });
-}
+                .mapValues(new Function<Set<String>, Double>() {
+                    @Override
+                    public Double call(Set<String> strings) throws Exception {
+                        if (strings.size()<4){
+                            return 0.0;
+                        }
+                        double previousLat = 0.0;
+                        double previousLon = 0.0;
+                        boolean first = true;
+                        double distance = 0;
+                        for (String checkIn : strings){
+                            String[] splittedLine = checkIn.split("\t");
+                            if (first){
+                                previousLat = Double.parseDouble(splittedLine[5]);
+                                previousLon = Double.parseDouble(splittedLine[6]);
+                                first = false;
+                                continue;
+                            }else{
+                                double lat = Double.parseDouble(splittedLine[5]);
+                                double lon = Double.parseDouble(splittedLine[6]);
+                                distance += Haversine.distance(previousLat,previousLon,lat,lon);
+                                previousLat=lat;
+                                previousLon=lon;
+                            }
+                        }
+                        return distance;
+                    }
+                });
+    }
 
     private static JavaRDD<String> assignCityAndCountyToEachCheckIn(JavaRDD<String> dataset){
         return dataset.map(new Function<String, String>() {
@@ -157,7 +192,7 @@ return strings;
         });
     }
 
-
+    //for histogram.. use som log-scale
     private static JavaPairRDD<String,Integer> countSessionsLength(JavaRDD<String> dataset){
         return  dataset.mapToPair(
                 new PairFunction<String, String, Integer>() {
