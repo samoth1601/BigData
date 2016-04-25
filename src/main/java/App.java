@@ -99,7 +99,7 @@ public class App {
 
 
     //private static JavaPairRDD<String, Double> assignCityCountry(JavaRDD<String> dataset) {
-        /**lager KeyValueRDD (Pair RDD med sessionId som key og hele checkinstringen som value)*/
+    /**lager KeyValueRDD (Pair RDD med sessionId som key og hele checkinstringen som value)*/
         /*return dataset.mapToPair(
                 new PairFunction<String, String, String>() {
                     public Tuple2<String, String> call(String x) {
