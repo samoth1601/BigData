@@ -222,6 +222,41 @@ public class App {
         }).distinct().count();
     }
 
+    /****************************************************************************/
+    /*************************** TASK 4.d) **************************************/
+    /**********  How many countries are represented in the dataset? ************/
+    /****************************************************************************/
+    private static void task4d(){
+        System.out.println("Unique countries: " + countUniqueCountries(datasetNoHeader));
+    }
+
+    private static long countUniqueCountries(JavaRDD<String> dataset) {
+        return assignCityAndCountry(dataset).map(new Function<String, String>() {
+            @Override
+            public String call(String s) throws Exception {
+                String[] splittedLine = s.split("\t");
+                return splittedLine[6];
+            }
+        }).distinct().count();
+    }
+
+    /*************************** TASK 4.e) **************************************/
+    /**********  How many cities are represented in the dataset? ************/
+    /****************************************************************************/
+    private static void task4e(){
+        System.out.println("Unique countries: " + countUniqueCities(datasetNoHeader));
+    }
+
+    private static long countUniqueCities(JavaRDD<String> dataset) {
+        return assignCityAndCountry(datasetNoHeader).mapToPair(new PairFunction<String, String, String>() {
+            @Override
+            public Tuple2<String, String> call(String s) throws Exception {
+                String[] splittedLine = s.split("\t");
+                return new Tuple2(splittedLine[6], splittedLine[5]);
+            }
+        }).distinct().count();
+    }
+
 
     /****************************************************************************/
     /*************************** TASK 5 *****************************************/
