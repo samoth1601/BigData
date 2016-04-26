@@ -22,96 +22,246 @@ public class App {
     final static JavaRDD<String> dataset = sc.textFile(datasetRaw);
     final static JavaRDD<String> datasetCities = sc.textFile(datasetCitiesRaw);
 
+    static Function2 removeHeader= new Function2<Integer, Iterator<String>, Iterator<String>>(){
+        @Override
+        public Iterator<String> call(Integer ind, Iterator<String> iterator) throws Exception {
+            if(ind==0 && iterator.hasNext()){
+                iterator.next();
+                return iterator;
+            }else
+                return iterator;
+        }
+    };
+    final static JavaRDD<String> datasetNoHeader = dataset.mapPartitionsWithIndex(removeHeader, false);
 
 
     public static void main(String[] args) {
 
-        /**PRØVE FJERNE NOE HEADERGREIER?
-         String header = dataset.first();
-
-         JavaRDD<String> datasetNew = dataset.map(new Function<String, String>() {
-         public String call(String s) throws Exception {
-         String[] splittedLine = s.split("\t");
-
-         return String.join("\t", splittedLine);
-         }
-         });
-         */
-
-        /** 2. Calculate local time for each check-in (UTC time + timezone offset). */
-
-//        JavaRDD<String> localTimeRDD = (convertToLocalTime(dataset));
-//        List<String> localTimeStringList = localTimeRDD.take(10);
-//        //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
-//        for (String line : localTimeStringList) {
-//            System.out.println(line);
-//        }
-
-        /** 3.Assign a city and country to each check-in*/
-        /*JavaRDD<String> cityCountryRDD = (assignCityCountry(dataset));
-        List<String> cityCountryList = cityCountryRDD.take(10);
-        //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
-        for (String line : cityCountryList) {
-            System.out.println(line);
-        }*/
-        //brute force is fine
+        /** TASK 2*/
+        task2();
 
 
-        /** 4. Answer the following questions:*/
-        /*
-        //todo (a) How many unique users are represented in the dataset?
-        float uniqueUsers = countUniqueUsers(dataset);
-        System.out.println("Unique users: " + uniqueUsers);
+        /** TASK 3 */
+        task3();
 
-        //todo (b) How many times did they check-in in total?
-        float totalSessions = countTotalSessions(dataset);
-        System.out.println("Total number of sessions : " + totalSessions);
+        /** Task 4 (a) */
+        task4a();
 
-        //todo (c) How many check-in sessions are there in the dataset?
-        float uniqueCheckInSessions = countUniqueSessions(dataset);
-        System.out.println("Unique users: " + uniqueUsers);
+        /** Task 4 (b) */
+        task4b();
 
-        //todo (d) How many countries are represented in the dataset?
+        /** Task 4 (c) */
+        task4c();
 
-        //todo (e) How many cities are represented in the dataset?
-*/
 
         /**Calculate lengths of sessions as number of check-ins and provide a histogram
          of these lengths*/
-
+        /*
         JavaPairRDD<String,Integer> sessionPairRDD = (countSessionsLength(dataset));
         List<Tuple2<String,Integer>> localTimeStringList = sessionPairRDD.collect();
         //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
         for (Tuple2<String, Integer> line : localTimeStringList) {
             System.out.println(line);
-        }
+        }*/
 
         /**For sessions with 4 and more check-ins, calculate their distance in kilometers
          (use Haversine formula to compute distance between two pairs of geo.
          coordinates).*/
-        JavaPairRDD<String, Double> distancePairRDD = (computeSessionDistance(dataset));
-        List<Tuple2<String, Double>> distancePairRDDLIst = distancePairRDD.take(150);
-        //List<String> localTimeStringList = localTimeRDD.takeOrdered(5);
-        for (Tuple2<String, Double> line : distancePairRDDLIst) {
-            System.out.println(line);
-        }
+        //ASSUMING ALREADY SORTED BY DATE!!!
     }
 
 
-    //private static JavaPairRDD<String, Double> assignCityCountry(JavaRDD<String> dataset) {
-    /**lager KeyValueRDD (Pair RDD med sessionId som key og hele checkinstringen som value)*/
-        /*return dataset.mapToPair(
-                new PairFunction<String, String, String>() {
-                    public Tuple2<String, String> call(String x) {
+    /****************************************************************************/
+    /*************************** TASK 2 *****************************************/
+    /** 2. Calculate local time for each check-in (UTC time + timezone offset). */
+    /****************************************************************************/
+    private static void task2() {
+        for (String string : convertToLocalTime(dataset).take(10)) {
+            System.out.println(string);
+        }
+    }
+
+    private static JavaRDD<String> convertToLocalTime(JavaRDD<String> dataset){
+        return dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                String[] splittedLine = s.split("\t");
+                String currentDate = splittedLine[3];
+                String timeOffset = splittedLine[4];
+                String updatedDate = calculateLocalTime(currentDate,timeOffset);
+                splittedLine[4] = updatedDate;
+                return String.join("\t", splittedLine);
+            }
+        });
+    }
+    private static String calculateLocalTime(String dateTime, String stringOffset) {
+        DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        Date temp = new Date();
+        try {
+            temp = df.parse(dateTime);
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(temp);
+            cal.add(Calendar.MINUTE, Integer.parseInt(stringOffset));
+            return df.format(cal.getTime());
+        } catch (ParseException e) {}
+        return temp.toString();
+    }
+
+    /****************************************************************************/
+    /*************************** TASK 3 *****************************************/
+    /************** 3.Assign a city and country to each check-in ****************/
+    /****************************************************************************/
+    private static void task3() {
+        for (String string : assignCityAndCountry(datasetNoHeader).take(10)) {
+            System.out.println(string);
+        }
+    }
+
+    static double shortestDist;
+    static String shortestCity;
+    static String shortestCountry;
+    static List<String> cities;
+
+    private static JavaRDD<String> assignCityAndCountry(JavaRDD<String> dataset){
+        cities = datasetCities.collect();
+        return dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                //For hver checkin, map med dette
+                String[] splittedLine = s.split("\t");
+                String checkinLat = splittedLine[5];
+                String checkinLon = splittedLine[6];
+                System.out.println(checkinLat + ", " + checkinLon);
+
+
+                String[] closestCity = getClosestCity(checkinLat,checkinLon);
+                splittedLine[5] = closestCity[0];
+                splittedLine[6] = closestCity[1];
+                return String.join("\t", splittedLine);
+            }
+        });
+    }
+
+
+    //HELPER method for finding the closest city to LatLong of checkings
+    private static String[] getClosestCity(String latIn, String lonIn) {
+        // setting shortestCity to null to get a clean start
+        shortestCity = "";
+        double checkinLat = Double.parseDouble(latIn);
+        double checkinLon = Double.parseDouble(lonIn);
+        // For each line (city) check if this city is the closest to the checkin
+        for (String cityString : cities)
+        {
+            String[] splittedLine = cityString.split("\t");
+
+            double lat2 = Double.parseDouble(splittedLine[1]);
+            double lon2 = Double.parseDouble(splittedLine[2]);
+            double distanceToCity = Haversine.distance(checkinLat, checkinLon, lat2, lon2);
+
+            if (shortestCity == "") {
+                shortestCity = splittedLine[0];
+                shortestCountry = splittedLine[4];
+                shortestDist = distanceToCity;
+                //ELSE
+            } else if (distanceToCity < shortestDist) {
+                shortestCity = splittedLine[0];
+                shortestCountry = splittedLine[4];
+                shortestDist = distanceToCity;
+            }
+        }
+
+        String[] toReturn = new String[2];toReturn[0]=shortestCity;toReturn[1]=shortestCountry;
+        return toReturn;
+    }
+
+
+    /****************************************************************************/
+    /*************************** TASK 4.a) **************************************/
+    /********** How many unique users are represented in the dataset? ***********/
+    /****************************************************************************/
+    private static void task4a(){
+        System.out.println("uniqueUsers" + countUniqueUsers(dataset));
+    }
+
+    private static long countUniqueUsers(JavaRDD<String> dataset){
+        return dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                String[] splittedLine = s.split("\t");
+                String userId = splittedLine[1];
+                return userId;
+            }
+        }).distinct().count();
+    }
+
+    /****************************************************************************/
+    /*************************** TASK 4.b) **************************************/
+    /************* How many times did they check-in in total? *******************/
+    /****************************************************************************/
+    private static void task4b(){
+        System.out.println("Total checkins: " + countTotalSessions(dataset));
+    }
+
+    private static long countTotalSessions(JavaRDD<String> dataset){
+        return dataset.count();
+    }
+
+
+    /****************************************************************************/
+    /*************************** TASK 4.c) **************************************/
+    /********** How many check-in sessions are there in the dataset? ************/
+    /****************************************************************************/
+    private static void task4c(){
+        System.out.println("Unique sessions: " + countUniqueSessions(dataset));
+    }
+
+    private static long countUniqueSessions(JavaRDD<String> dataset){
+        return dataset.map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                String[] splittedLine = s.split("\t");
+                String sessionId = splittedLine[2];
+                return sessionId;
+            }
+        }).distinct().count();
+    }
+
+
+    /****************************************************************************/
+    /*************************** TASK 5 *****************************************/
+    /********** Calculate lengths of sessions as number of check-ins   **********/
+    /********** and provide a histogram of these lengths.              **********/
+    /****************************************************************************/
+    //for histogram.. use som log-scale
+    private static JavaPairRDD<String,Integer> countSessionsLength(JavaRDD<String> dataset){
+        return  dataset.mapToPair(
+                new PairFunction<String, String, Integer>() {
+                    public Tuple2<String, Integer> call(String x) {
                         String[] splittedLine = x.split("\t");
                         String sessionId = splittedLine[2];
-                        return new Tuple2(sessionId, x);
-                    }
-                })
-    }*/
+                        return new Tuple2(sessionId, 1); }
+                }).reduceByKey(
+                new Function2<Integer, Integer, Integer>() {
+                    public Integer call(Integer a, Integer b) { return a + b; }
+                }).mapToPair(
+                new PairFunction<Tuple2<String, Integer>, String, Integer>() {
+                    @Override
+                    public Tuple2<String, Integer> call(Tuple2<String, Integer> stringIntegerTuple2) throws Exception {
+                        Integer tempKey = stringIntegerTuple2._2();
+                        return new Tuple2(tempKey, 1);}
+                }).reduceByKey(new Function2<Integer, Integer, Integer>() {
+            @Override
+            public Integer call(Integer integer, Integer integer2) throws Exception {
+                return integer + integer2;
+            }
+        }).sortByKey();
+    }
 
+
+
+    /****************************************************************************/
+    /*************************** TASK 6 *****************************************/
+    /********** For sessions with 4 and more check-ins, *************************/
+    /********** calculate their distance in kilometers  *************************/
+    /****************************************************************************/
     private static JavaPairRDD<String, Double> computeSessionDistance(JavaRDD<String> dataset){
-        /**lager KeyValueRDD (Pair RDD med sessionId som key og hele checkinstringen som value)*/
+        // lager KeyValueRDD (Pair RDD med sessionId som key og hele checkinstringen som value)
         return  dataset.mapToPair(
                 new PairFunction<String, String, String>() {
                     public Tuple2<String, String> call(String x) {
@@ -119,7 +269,7 @@ public class App {
                         String sessionId = splittedLine[2];
                         return new Tuple2(sessionId, x); }
                 })
-                /**Slår sammen alle linjene med samme key og legger values etter hverandre i samme StringSet.*/
+                // Slår sammen alle linjene med samme key og legger values etter hverandre i samme StringSet.
                 .aggregateByKey(new HashSet<String>(),
                         new Function2<Set<String>, String, Set<String>>() {
                             @Override
@@ -135,16 +285,16 @@ public class App {
                                 return a;
                             }
                         })
-                /**Filter, hvis færre enn 4 checkins, remove*/
+                // Filter, hvis færre enn 4 checkins, remove
                 .filter(new Function<Tuple2<String, Set<String>>, Boolean>() {
                     @Override
                     public Boolean call(Tuple2<String, Set<String>> stringSetTuple2) throws Exception {
                         return (stringSetTuple2._2().size() >= 4);
                     }
                 })
-                /**For hver sessionId, split stringSettet til checkins, og kalkuler avstanden mellom dem.
-                 * if sort. have stringset as rdd and sort by time
-                 * if not, mention assumption of already sorted.*/
+
+                //For hver sessionId, split stringSettet til checkins, og kalkuler avstanden mellom dem.
+                //ASSUMING ALREADY SORTED BY DATE!!!
 
                 .mapValues(new Function<Set<String>, Double>() {
                     @Override
@@ -176,95 +326,4 @@ public class App {
                 });
     }
 
-    private static JavaRDD<String> assignCityAndCountyToEachCheckIn(JavaRDD<String> dataset){
-        return dataset.map(new Function<String, String>() {
-            public String call(String s) throws Exception{
-                String[] splittedLine = s.split("\t");
-                //henter latLon
-                String lat = splittedLine[5];
-                String lon = splittedLine[6];
-
-                //for alle byer, sjekk hvilken som er nærmest.
-                //Kanskje kjøre map inni denne igjen?...
-
-                return String.join("\t", splittedLine);
-            }
-        });
-    }
-
-    //for histogram.. use som log-scale
-    private static JavaPairRDD<String,Integer> countSessionsLength(JavaRDD<String> dataset){
-        return  dataset.mapToPair(
-                new PairFunction<String, String, Integer>() {
-                    public Tuple2<String, Integer> call(String x) {
-                        String[] splittedLine = x.split("\t");
-                        String sessionId = splittedLine[2];
-                        return new Tuple2(sessionId, 1); }
-                }).reduceByKey(
-                new Function2<Integer, Integer, Integer>() {
-                    public Integer call(Integer a, Integer b) { return a + b; }
-                }).mapToPair(
-                new PairFunction<Tuple2<String, Integer>, String, Integer>() {
-                    @Override
-                    public Tuple2<String, Integer> call(Tuple2<String, Integer> stringIntegerTuple2) throws Exception {
-                        Integer tempKey = stringIntegerTuple2._2();
-                        return new Tuple2(tempKey, 1);}
-                }).reduceByKey(new Function2<Integer, Integer, Integer>() {
-            @Override
-            public Integer call(Integer integer, Integer integer2) throws Exception {
-                return integer + integer2;
-            }
-        }).sortByKey();
-    }
-
-    private static long countTotalSessions(JavaRDD<String> dataset){
-        return dataset.count();
-    }
-
-    private static long countUniqueSessions(JavaRDD<String> dataset){
-        return dataset.map(new Function<String, String>() {
-            public String call(String s) throws Exception{
-                String[] splittedLine = s.split("\t");
-                String sessionId = splittedLine[2];
-                return sessionId;
-            }
-        }).distinct().count();
-    }
-
-    private static long countUniqueUsers(JavaRDD<String> dataset){
-        return dataset.map(new Function<String, String>() {
-            public String call(String s) throws Exception{
-                String[] splittedLine = s.split("\t");
-                String userId = splittedLine[1];
-                return userId;
-            }
-        }).distinct().count();
-    }
-
-    
-    private static JavaRDD<String> convertToLocalTime(JavaRDD<String> dataset){
-        return dataset.map(new Function<String, String>() {
-            public String call(String s) throws Exception{
-                String[] splittedLine = s.split("\t");
-                String currentDate = splittedLine[3];
-                String timeOffset = splittedLine[4];
-                String updatedDate = calculateLocalTime(currentDate,timeOffset);
-                splittedLine[4] = updatedDate;
-                return String.join("\t", splittedLine);
-            }
-        });
-    }
-
-    private static String calculateLocalTime(String dateTime, String stringOffset) {
-        DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        Date temp = new Date();
-        try {
-            temp = df.parse(dateTime);
-            Calendar cal = Calendar.getInstance();
-            cal.setTime(temp);
-            cal.add(Calendar.MINUTE, Integer.parseInt(stringOffset));
-            return df.format(cal.getTime());
-        } catch (ParseException e) {}
-        return temp.toString();
-    }
 }
