@@ -1,0 +1,220 @@
+/* SimpleApp.java */
+import org.apache.spark.api.java.*;
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.function.Function;
+import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFunction;
+import scala.Tuple2;
+
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.Normalizer;
+import java.util.*;
+
+
+
+public class Twitter {
+    /** 1. Load the Foursquare dataset.*/
+    final static String twitterRaw = "./src/main/resources/geotweets.tsv";
+    final static String negativeRaw = "./src/main/resources/negative-words.txt";
+    final static String positiveRaw = "./src/main/resources/positive-words.txt";
+    final static SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local");
+    final static JavaSparkContext sc = new JavaSparkContext(conf);
+    final static JavaRDD<String> twitter = sc.textFile(twitterRaw);
+    final static JavaRDD<String> negativeSet = sc.textFile(negativeRaw);
+    final static JavaRDD<String> positiveSet = sc.textFile(positiveRaw);
+    final static List<String> positive = positiveSet.collect();
+    final static List<String> negative = negativeSet.collect();
+
+    static HashMap<String,Integer> polarityHashMap = new HashMap<String,Integer>();
+
+
+    static Function2 removeHeader= new Function2<Integer, Iterator<String>, Iterator<String>>(){
+        @Override
+        public Iterator<String> call(Integer ind, Iterator<String> iterator) throws Exception {
+            if(ind==0 && iterator.hasNext()){
+                iterator.next();
+                return iterator;
+            }else
+                return iterator;
+        }
+    };
+    final static JavaRDD<String> twitterNoHeader = twitter.mapPartitionsWithIndex(removeHeader, false);
+
+
+    public static void main(String[] args) {
+
+        task2();
+        //task3();
+
+    }
+
+/*
+2. Find aggregated polarity (sentiment) of all English tweets (lang
+= `en') for each city in the United States (place type = `city',
+country = `US') for each day of week.
+ */
+    /*
+    3. Output your result into a file in predefined format.
+     */
+private static void task2() {
+    generateMap();
+    //convertToLocalTime(twitter).take(5);
+
+    try {
+        writeToFile(filterMapAggregate(convertToLocalTime(twitter)));
+    } catch (IOException e) {
+        e.printStackTrace();
+    }
+
+/*
+    for (Tuple2 string : filterMapAggregate(convertToLocalTime(twitter)).take(15)) {
+        System.out.println(string);
+    }*/
+
+}
+
+    private static void generateMap() {
+        for (String word:negative) {
+            polarityHashMap.put(word,-1);
+        }
+        for (String word:positive){
+            polarityHashMap.put(word, 1);
+        }
+    }
+
+    static int polarity;
+    private static JavaRDD<String> convertToLocalTime(JavaRDD<String> twitter){ //bruk filter til å filtrere engelske tweets!!
+        return twitter.filter(new Function<String, Boolean>() {
+            @Override
+            public Boolean call(String s) throws Exception {
+
+                String[] splittedline = s.split("\t");
+                if (splittedline[5].equals("en") && splittedline[3].equals("city") && splittedline[2].equals("US")){
+                    return true;
+                }
+                else{
+                    return false;
+                }
+
+            }
+        })
+        .map(new Function<String, String>() {
+            public String call(String s) throws Exception{
+                polarity=0;
+                String[] splittedLine = s.split("\t");
+                String currentDate = splittedLine[0];
+                String timeOffset = splittedLine[8];
+                String updatedDate = calculateLocalTime(currentDate,timeOffset);
+                splittedLine[0] = updatedDate;
+                //System.out.println(splittedLine[10]);
+                //må gjøres på sett med kun engelske tweets!
+                String tweet = Normalizer.normalize(splittedLine[10], Normalizer.Form.NFD).replaceAll("[^\\p{ASCII}]", "");
+                tweet = tweet.toLowerCase();
+                //System.out.println(tweet);
+                String[] tweetList = tweet.split(" ");
+                polarity = findPolarity(tweetList);
+                splittedLine[1] = Integer.toString(polarity);
+                return splittedLine[4] + "\t" + splittedLine[0] + "\t" + splittedLine[1];
+                //return String.join("\t", splittedLine);
+            }
+
+
+        });
+    }
+    static public JavaPairRDD<String, Integer> filterMapAggregate(JavaRDD<String> rdd){
+        return rdd.mapToPair(new PairFunction<String,String,Integer>() {
+            public Tuple2<String, Integer> call(String s) throws Exception {
+                String[] splittedLine = s.split("\t");
+                Integer sentiment = Integer.parseInt(splittedLine[2]);
+                String cityAndDay = splittedLine[0] +"\t"+splittedLine[1];
+                return new Tuple2(cityAndDay, sentiment);
+            }
+        }).reduceByKey((a, b) -> a + b);
+
+    }
+
+    private static int findPolarity(String[] tweetList) {
+        int tweetPolarity = 0;
+        int overAllTweetPolarity=0;
+        for (String word:tweetList) {
+            if (polarityHashMap.get(word)!= null){
+                //System.out.println("fant negative/positive ord!!! -------");
+                tweetPolarity+=polarityHashMap.get(word);
+            }
+        }
+        if (tweetPolarity>0){
+            overAllTweetPolarity=1;
+        }
+        else if (tweetPolarity<0){
+            overAllTweetPolarity=-1;
+        }
+        else if (tweetPolarity==0){
+            overAllTweetPolarity =0;
+        }
+
+        return overAllTweetPolarity;
+    }
+
+    private static int checkWord(String word) {
+        // sjekk ord opp mot negative/positive ord
+        return (int) polarityHashMap.get(word);
+
+    }
+
+    private static String calculateLocalTime(String timeStamp, String stringOffset) {
+
+        Calendar mydate = Calendar.getInstance();
+
+        long localNumberOfSeconds = Long.parseLong(timeStamp) + (Long.parseLong(stringOffset)*60);
+
+        mydate.setTimeInMillis(1000*localNumberOfSeconds);
+        return getDay(mydate.get(Calendar.DAY_OF_WEEK));
+    }
+
+    private static String getDay(int weekdayNumber) {
+        String weekdayString = "";
+        switch (weekdayNumber){
+            case 1:
+                weekdayString = "Monday";
+                break;
+            case 2:
+                weekdayString = "Tuesday";
+                break;
+            case 3:
+                weekdayString = "Wednesday";
+                break;
+            case 4:
+                weekdayString = "Thursday";
+                break;
+            case 5:
+                weekdayString = "Friday";
+                break;
+            case 6:
+                weekdayString = "Saturday";
+                break;
+            case 7:
+                weekdayString = "Sunday";
+                break;
+
+        }
+        return weekdayString;
+    }
+    static public void writeToFile(JavaPairRDD<String, Integer> rdd) throws IOException
+    {
+        BufferedWriter bw = new BufferedWriter(new FileWriter("C:/Users/jonmartin/Desktop/min.txt"));
+
+        TreeMap<String, Integer> map = new TreeMap<>(rdd.collectAsMap());
+
+        for (Map.Entry<String, Integer> entry : map.entrySet()) {
+            int l = entry.getValue();
+            String s = entry.getKey();
+            bw.write(s + "\t" + l);
+            bw.newLine();
+        }
+
+        bw.close();
+    }
+}
